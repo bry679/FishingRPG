@@ -812,6 +812,14 @@
             const tabElement = document.getElementById(tabName + 'Tab');
             if (tabElement) tabElement.classList.add('active');
             if (element) element.classList.add('active');
+
+            if (tabName === "sell") renderSell();
+            if (tabName === "fishing") updateUI();
+            if (tabName === "locations") renderLocations();
+            if (tabName === "encyclopedia") renderEncyclopedia();
+            if (tabName === "shop") renderShop();
+
+            updateUI();
         }
 
         // ------------------------------
