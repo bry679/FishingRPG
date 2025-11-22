@@ -812,14 +812,6 @@
             const tabElement = document.getElementById(tabName + 'Tab');
             if (tabElement) tabElement.classList.add('active');
             if (element) element.classList.add('active');
-
-            if (tabName === "sell") renderSell();
-            if (tabName === "fishing") updateUI();
-            if (tabName === "locations") renderLocations();
-            if (tabName === "encyclopedia") renderEncyclopedia();
-            if (tabName === "shop") renderShop();
-
-            updateUI();
         }
 
         // ------------------------------
@@ -1586,7 +1578,8 @@
     <!-- FIREBASE + LEADERBOARD SCRIPT (module) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getDatabase, ref, set, onValue, query, orderByChild, limitToLast, get } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCnwHvRXlLzC122GIusPgwlboJA2qdRKcE",
@@ -1601,6 +1594,79 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const auth = getAuth(app);
+        let authReady = false;
+
+        function syncCloudSave() {
+            const gs = window.gameState;
+            if (!auth.currentUser || !gs) return;
+            const uid = auth.currentUser.uid;
+            const saveRef = ref(db, "saves/" + uid);
+            set(saveRef, gs).catch(err => console.error("Error syncing cloud save:", err));
+        }
+        window.syncCloudSave = syncCloudSave;
+
+        function applyCloudSave(loaded) {
+            if (!loaded) return;
+            const defaults = {
+                level: 1,
+                xp: 0,
+                xpToNext: 100,
+                energy: 100,
+                maxEnergy: 100,
+                gold: 50,
+                totalFish: 0,
+                inventory: {},
+                equipment: {
+                    rod: { name: 'Basic Rod', catchBonus: 0, energyCost: 10 },
+                    bait: { name: 'No Bait', catchBonus: 0 }
+                },
+                ownedEquipment: { rods: [], baits: [] },
+                environment: { timeOfDay: 'Day', weather: 'Clear' },
+                currentLocationId: 'lake',
+                fishStats: {},
+                casts: 0
+            };
+            const gs = Object.assign({}, defaults, loaded);
+            window.gameState = gs;
+            if (window.renderEquipment) window.renderEquipment();
+            if (window.renderShop) window.renderShop();
+            if (window.renderSell) window.renderSell();
+            if (window.renderLocations) window.renderLocations();
+            if (window.renderEncyclopedia) window.renderEncyclopedia();
+            if (window.updateUI) window.updateUI();
+            if (window.saveGame) window.saveGame();
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                signInAnonymously(auth).catch(err => console.error("Anon auth error:", err));
+                return;
+            }
+            window.fishingUserId = user.uid;
+            const saveRef = ref(db, "saves/" + user.uid);
+            try {
+                const snap = await get(saveRef);
+                if (snap.exists()) {
+                    const data = snap.val();
+                    applyCloudSave(data);
+                } else {
+                    // No cloud save yet, push current local gameState
+                    if (window.gameState) {
+                        syncCloudSave();
+                    }
+                }
+            } catch (err) {
+                console.error("Error loading cloud save:", err);
+            }
+            authReady = true;
+        });
+
+        // Kick off anonymous sign-in immediately
+        signInAnonymously(auth).catch(err => {
+            console.error("Anon sign-in failed:", err);
+        });
+
 
         // Username prompt (once, stored in localStorage)
         let username = localStorage.getItem('fishingRPG_username');
