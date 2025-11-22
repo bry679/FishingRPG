@@ -576,6 +576,7 @@
                         <button class="tab-button" onclick="switchTab('locations', this)">🗺️ Locations</button>
                         <button class="tab-button" onclick="switchTab('encyclopedia', this)">📖 Encyclopedia</button>
                         <button class="tab-button" onclick="switchTab('leaderboard', this)">🏆 Leaderboard</button>
+                        <button class="tab-button" onclick="switchTab('chat', this)">💬 Chat</button>
                     </div>
                     
                     <!-- Fishing Tab -->
@@ -641,7 +642,30 @@
                         <div id="leaderboardContent">
                             <p style="color:#999; text-align:center; padding:15px;">Connecting to leaderboard...</p>
                         </div>
+                    
+                    <!-- Chat Tab -->
+                    <div id="chatTab" class="tab-content">
+                        <h3>Global Chat</h3>
+                        <div id="chatMessages" style="height:300px; overflow-y:auto; background:#f4f4f4; border:1px solid #ccc; border-radius:8px; padding:10px; margin-bottom:10px;">
+                            <p style="color:#999; text-align:center;">Loading chat...</p>
+                        </div>
+<div id="chatTab" class="tab-content">
+<h3>Global Chat</h3>
+<div id="chatMessages" style="height:300px; overflow-y:auto; background:#f4f4f4; border:1px solid #ccc; border-radius:8px; padding:10px; margin-bottom:10px;">
+<p style="color:#999; text-align:center;">Loading chat...</p>
+</div>
+<div style="display:flex; gap:10px;">
+<input id="chatInput" type="text" placeholder="Say something..." style="flex:1; padding:10px; border-radius:6px; border:1px solid #ccc;">
+<button onclick="sendChatMessage()" style="padding:10px 20px; background:#2193b0; color:white; border:none; border-radius:6px;">Send</button>
+</div>
+</div>
+
+                        <div style="display:flex; gap:10px;">
+                            <input id="chatInput" type="text" placeholder="Say something..." style="flex:1; padding:10px; border-radius:6px; border:1px solid #ccc;">
+                            <button onclick="sendChatMessage()" style="padding:10px 20px; background:#2193b0; color:white; border:none; border-radius:6px;">Send</button>
+                        </div>
                     </div>
+</div>
                 </div>
             </div>
             
@@ -809,9 +833,19 @@
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
+
             const tabElement = document.getElementById(tabName + 'Tab');
             if (tabElement) tabElement.classList.add('active');
             if (element) element.classList.add('active');
+
+            
+            if (tabName === "sell") renderSell();
+            if (tabName === "fishing") updateUI();
+            if (tabName === "locations") renderLocations();
+            if (tabName === "encyclopedia") renderEncyclopedia();
+            if (tabName === "shop") renderShop();
+
+            updateUI();
         }
 
         // ------------------------------
@@ -984,6 +1018,7 @@
                 updateUI();
                 renderSell();
                 saveGame();
+                renderShop();
             }
         }
 
@@ -1279,6 +1314,7 @@
                 gameState.fishStats[fish.name] = stats;
                 gameState.xp += xpGain;
                 gameState.gold += goldGain;
+                checkLevelUp();
                 gameState.totalFish++;
                 checkLevelUp();
                 const timingText = timingAccuracy >= 90 ? 'PERFECT!' : timingAccuracy >= 70 ? 'Great!' : 'Good!';
@@ -1578,8 +1614,8 @@
     <!-- FIREBASE + LEADERBOARD SCRIPT (module) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-        import { getDatabase, ref, set, onValue, query, orderByChild, limitToLast, get } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+        import { push } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCnwHvRXlLzC122GIusPgwlboJA2qdRKcE",
@@ -1594,79 +1630,6 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const auth = getAuth(app);
-        let authReady = false;
-
-        function syncCloudSave() {
-            const gs = window.gameState;
-            if (!auth.currentUser || !gs) return;
-            const uid = auth.currentUser.uid;
-            const saveRef = ref(db, "saves/" + uid);
-            set(saveRef, gs).catch(err => console.error("Error syncing cloud save:", err));
-        }
-        window.syncCloudSave = syncCloudSave;
-
-        function applyCloudSave(loaded) {
-            if (!loaded) return;
-            const defaults = {
-                level: 1,
-                xp: 0,
-                xpToNext: 100,
-                energy: 100,
-                maxEnergy: 100,
-                gold: 50,
-                totalFish: 0,
-                inventory: {},
-                equipment: {
-                    rod: { name: 'Basic Rod', catchBonus: 0, energyCost: 10 },
-                    bait: { name: 'No Bait', catchBonus: 0 }
-                },
-                ownedEquipment: { rods: [], baits: [] },
-                environment: { timeOfDay: 'Day', weather: 'Clear' },
-                currentLocationId: 'lake',
-                fishStats: {},
-                casts: 0
-            };
-            const gs = Object.assign({}, defaults, loaded);
-            window.gameState = gs;
-            if (window.renderEquipment) window.renderEquipment();
-            if (window.renderShop) window.renderShop();
-            if (window.renderSell) window.renderSell();
-            if (window.renderLocations) window.renderLocations();
-            if (window.renderEncyclopedia) window.renderEncyclopedia();
-            if (window.updateUI) window.updateUI();
-            if (window.saveGame) window.saveGame();
-        }
-
-        onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                signInAnonymously(auth).catch(err => console.error("Anon auth error:", err));
-                return;
-            }
-            window.fishingUserId = user.uid;
-            const saveRef = ref(db, "saves/" + user.uid);
-            try {
-                const snap = await get(saveRef);
-                if (snap.exists()) {
-                    const data = snap.val();
-                    applyCloudSave(data);
-                } else {
-                    // No cloud save yet, push current local gameState
-                    if (window.gameState) {
-                        syncCloudSave();
-                    }
-                }
-            } catch (err) {
-                console.error("Error loading cloud save:", err);
-            }
-            authReady = true;
-        });
-
-        // Kick off anonymous sign-in immediately
-        signInAnonymously(auth).catch(err => {
-            console.error("Anon sign-in failed:", err);
-        });
-
 
         // Username prompt (once, stored in localStorage)
         let username = localStorage.getItem('fishingRPG_username');
@@ -1723,6 +1686,50 @@
 
         // Refresh UI once username exists
         if (window.updateUI) window.updateUI();
-    </script>
+    
+// ------------------------------
+// Global Chat System
+// ------------------------------
+const chatRef = ref(db, "chat");
+
+onValue(chatRef, snapshot => {
+    const container = document.getElementById("chatMessages");
+    if (!container) return;
+
+    const messages = snapshot.val() || {};
+    const keys = Object.keys(messages).sort((a, b) => messages[a].time - messages[b].time);
+
+    container.innerHTML = keys.map(key => {
+        const msg = messages[key];
+        const t = new Date(msg.time || 0).toLocaleTimeString();
+        return `
+            <div style="margin-bottom:6px;">
+                <strong style="color:#2193b0;">${msg.user || 'Player'}</strong>
+                <span style="font-size:0.8em; color:#666;">${t}</span><br>
+                <span>${msg.text || ''}</span>
+            </div>
+        `;
+    }).join("");
+
+    container.scrollTop = container.scrollHeight;
+});
+
+window.sendChatMessage = function () {
+    const input = document.getElementById("chatInput");
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    const username = window.fishingUsername || "Player";
+
+    push(chatRef, {
+        user: username,
+        text: text,
+        time: Date.now()
+    });
+
+    input.value = "";
+};
+</script>
 </body>
 </html>
