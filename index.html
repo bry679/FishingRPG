@@ -994,6 +994,7 @@
                 updateUI();
                 renderSell();
                 saveGame();
+                renderShop();
             }
         }
 
@@ -1289,6 +1290,7 @@
                 gameState.fishStats[fish.name] = stats;
                 gameState.xp += xpGain;
                 gameState.gold += goldGain;
+                checkLevelUp();
                 gameState.totalFish++;
                 checkLevelUp();
                 const timingText = timingAccuracy >= 90 ? 'PERFECT!' : timingAccuracy >= 70 ? 'Great!' : 'Good!';
