@@ -98,6 +98,35 @@
         .message.fail {
             color: #e97474;
         }
+        /* New/undo notification style */
+        .critical-message {
+            background: #e97474;
+            color: #fff;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 700;
+            padding: 18px;
+            border-radius: 14px;
+            max-width: 440px;
+            margin: 36px auto 18px auto;
+        }
+        .undo-btn {
+            background: #fff;
+            color: #e97474;
+            padding: 6px 18px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-top: 10px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .undo-btn:hover {
+            background: #e97474;
+            color: #fff;
+            border: 1.5px solid #fff;
+        }
     </style>
 </head>
 <body>
@@ -116,23 +145,55 @@
             <div id="sellContent"></div>
         </div>
     </div>
-    
+    <div id="criticalMsgArea"></div>
     <script>
-        // Make the game visible as soon as script runs after DOMContentLoaded
+        // Show game area when DOM is ready
         document.addEventListener("DOMContentLoaded", function() {
             var cont = document.getElementById('mainContainer');
             if(cont) cont.style.display = '';
         });
 
-        // State and DB initialization (dummies for demo)
-        if (typeof window.gameState === "undefined") {
+        // Load/save helpers
+        const LS_KEY = "fishingRPG_save";
+        // Helper to clone objects deeply (inventory, etc)
+        function deepClone(obj) {
+            return JSON.parse(JSON.stringify(obj));
+        }
+
+        function saveGame() {
+            // Save only if not in undo state
+            if (window.preventNextSave) {
+                window.preventNextSave = false;
+                return;
+            }
+            try {
+                localStorage.setItem(LS_KEY, JSON.stringify(window.gameState));
+            } catch(e){}
+        }
+        function loadGame() {
+            try {
+                let data = localStorage.getItem(LS_KEY);
+                if(!data) return null;
+                return JSON.parse(data);
+            } catch(e){return null;}
+        }
+
+        // State and DB initialization/recovery
+        let userSavedData = loadGame();
+
+        if (!userSavedData) {
+            // Give new user default starter
             window.gameState = {
                 inventory: { Trout: 3, Bass: 2, Salmon: 1 },
                 gold: 42,
                 totalFish: 6,
                 level: 2
             };
+            saveGame();
+        } else {
+            window.gameState = userSavedData;
         }
+        // Fish DB (assume unchanged)
         if (typeof window.fishDatabase === "undefined") {
             window.fishDatabase = [
                 { name: "Trout", icon: "🐟", gold: 15 },
@@ -140,6 +201,9 @@
                 { name: "Salmon", icon: "🐡", gold: 33 }
             ];
         }
+        // For undo functionality
+        let lastBeforeSellState = null;
+
         if (typeof window.showMessage === "undefined") {
             window.showMessage = function(msg, type) {
                 const statDiv = document.getElementById('playerStats');
@@ -155,7 +219,6 @@
                 }, 2500);
             }
         }
-        if (typeof window.saveGame === "undefined") window.saveGame = function() {};
         if (typeof window.renderShop === "undefined") window.renderShop = function() {};
 
         // stat UI update
@@ -169,12 +232,34 @@
         }
         window.updateUI = updateUI;
 
+        // Undo "critical" warning UI
+        function showCriticalMessage(msg, undoCallback) {
+            const area = document.getElementById("criticalMsgArea");
+            area.innerHTML = `
+                <div class="critical-message" role="alert">
+                    ${msg}
+                    <br>
+                    ${undoCallback ? '<button class="undo-btn" id="undoBtn">Undo</button>' : ""}
+                </div>
+            `;
+            if (undoCallback) {
+                document.getElementById("undoBtn").onclick = function() {
+                    undoCallback();
+                    area.innerHTML = "";
+                };
+            }
+        }
+        function clearCriticalMessage() {
+            document.getElementById("criticalMsgArea").innerHTML = "";
+        }
+
         // Expose for inline handlers
         window.sellFish = sellFish;
         window.sellAllFish = sellAllFish;
 
         // Render sell panel
         function renderSell() {
+            clearCriticalMessage();
             const sellContent = document.getElementById('sellContent');
             if (!sellContent) return;
 
@@ -218,11 +303,14 @@
         }
 
         function sellFish(fishName, quantity) {
+            clearCriticalMessage();
             const fish = fishDatabase.find(f => f.name === fishName);
             if (!fish) return;
             const count = gameState.inventory[fishName] || 0;
             const sellCount = Math.min(quantity, count);
             if (sellCount > 0) {
+                // Save last state for undo
+                lastBeforeSellState = deepClone(gameState);
                 gameState.inventory[fishName] -= sellCount;
                 if (gameState.inventory[fishName] <= 0) delete gameState.inventory[fishName];
                 const goldEarned = fish.gold * sellCount;
@@ -236,9 +324,9 @@
         }
 
         function sellAllFish() {
+            clearCriticalMessage();
             let totalGold = 0;
             let soldAny = false;
-
             for (const fishName in gameState.inventory) {
                 const fish = fishDatabase.find(f => f.name === fishName);
                 if (fish) {
@@ -253,10 +341,28 @@
                 return;
             }
 
+            // Save previous gameState for undo in-memory
+            lastBeforeSellState = deepClone(gameState);
+
             gameState.gold += totalGold;
             gameState.inventory = {};
 
-            showMessage(`Sold ALL fish for ${totalGold} gold!`, 'success');
+            // Show critical warning with undo
+            showCriticalMessage(
+                "You sold ALL your fish for " + totalGold + " gold! <br>If you made a mistake, click UNDO below.",
+                function undoSellAll() {
+                    if (lastBeforeSellState) {
+                        window.gameState = deepClone(lastBeforeSellState);
+                        window.preventNextSave = true;
+                        updateUI();
+                        renderSell();
+                        renderShop();
+                        saveGame();
+                        lastBeforeSellState = null;
+                        showMessage("Sell All undone! Your fish are back.", "success");
+                    }
+                }
+            );
 
             updateUI();
             renderSell();
