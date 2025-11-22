@@ -957,7 +957,16 @@
                 sellContent.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No fish to sell!</p>';
                 return;
             }
-            let html = '<p style="margin-bottom: 15px; color: #666;">Click "Sell All" to sell all of a fish type, or sell individually.</p>';
+            let html = `
+                <button class="sell-button"
+                        style="margin-bottom: 15px; background:#e67300;"
+                        onclick="sellAllFish()">
+                    Sell ALL Fish
+                </button>
+                <p style="margin-bottom: 15px; color: #666;">
+                    Sell all of a fish type, or use the button above to sell EVERYTHING.
+                </p>
+            `;
             fishNames.forEach(fishName => {
                 const fish = fishDatabase.find(f => f.name === fishName);
                 if (!fish) return;
@@ -996,7 +1005,34 @@
                 saveGame();
                 renderShop();
             }
-        }
+        function sellAllFish() {
+            let totalGold = 0;
+            let soldAny = false;
+
+            for (const fishName in gameState.inventory) {
+                const fish = fishDatabase.find(f => f.name === fishName);
+                if (fish) {
+                    const qty = gameState.inventory[fishName];
+                    totalGold += qty * fish.gold;
+                    soldAny = true;
+               }
+            }
+
+           if (!soldAny) {
+               showMessage('No fish to sell!', 'fail');
+               return;
+           }
+
+           gameState.gold += totalGold;
+           gameState.inventory = {}; // Clear ALL fish
+
+           showMessage(`Sold ALL fish for ${totalGold} gold!`, 'success');
+           updateUI();
+           renderSell();
+           renderShop();
+           saveGame();
+       }
+
 
         // ------------------------------
         // Locations
